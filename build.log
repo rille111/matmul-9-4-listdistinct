@@ -1,0 +1,121 @@
+# lake env lean ListDistinct.lean  (Windows x86_64 workstation, BelowNormal, LEAN_NUM_THREADS=8)
+# start: 2026-11-25 23:55:14 Europe/Stockholm
+# sha256: 12B017A49872E161E1BC8EE3D413411893C20F40716D2EF4CD64CBA28CAEAA29
+Lake version 5.0.0-src+5045d00 (Lean version 4.34.1)
+Lean (version 4.34.1, x86_64-w64-windows-gnu, commit 5045d0056413266e57c625dcd7c365b10e377c52, Release)
+'ListDistinctExposition.manyList_unfolded' depends on axioms: [propext, Classical.choice, Quot.sound]
+'ListDistinctExposition.manyList_full_unfolded' depends on axioms: [propext, Classical.choice, Quot.sound]
+'ListDistinctExposition.one_list_vertices' depends on axioms: [propext, Classical.choice, Quot.sound]
+'ListDistinctExposition.gate' depends on axioms: [propext, Classical.choice, Quot.sound]
+'ListDistinctExposition.copy' depends on axioms: [propext, Classical.choice, Quot.sound]
+'ListDistinctExposition.pin' depends on axioms: [propext, Classical.choice, Quot.sound]
+'ListDistinctExposition.deterministic_lower' depends on axioms: [propext, Classical.choice, Quot.sound]
+'ListDistinctExposition.upper' depends on axioms: [propext, Classical.choice, Quot.sound]
+'ListDistinctExposition.tagged_hard' depends on axioms: [propext, Classical.choice, Quot.sound]
+'OAI.LinearAlgebra.MatrixExponent.BatchDescent.manyList' depends on axioms: [propext, Classical.choice, Quot.sound]
+'OAI.LinearAlgebra.MatrixExponent.BatchDescent.hard' depends on axioms: [propext, Classical.choice, Quot.sound]
+ListDistinctExposition.deterministic_lower : ∀ (F : Type) [inst : Field F] [Finite F],
+  ∃ σ,
+    0 < σ ∧
+      ∀ᶠ (w : ℕ) in Filter.atTop,
+        ∀ (m : ℕ),
+          OAI.LinearAlgebra.MatrixExponent.DNet F
+              (OAI.LinearAlgebra.MatrixExponent.tree w (OAI.LinearAlgebra.MatrixExponent.word (2 * w)))
+              OAI.LinearAlgebra.MatrixExponent.Wire.bit
+              (fun x => decide (OAI.LinearAlgebra.MatrixExponent.flatten w x).Nodup) m →
+            ↑(OAI.LinearAlgebra.MatrixExponent.listBits w) * (↑w ^ σ - 3) < 3 * (↑m + 1)
+ListDistinctExposition.circuit_lower : ∀ (F : Type) [Field F] [Finite F],
+  ∃ σ,
+    0 < σ ∧
+      ∀ᶠ (w : ℕ) in Filter.atTop,
+        ∀ (gs : List ListDistinctExposition.Gate),
+          ListDistinctExposition.WF gs (OAI.LinearAlgebra.MatrixExponent.listBits w) →
+            (∀
+                (x :
+                  OAI.LinearAlgebra.MatrixExponent.Val
+                    (OAI.LinearAlgebra.MatrixExponent.tree w (OAI.LinearAlgebra.MatrixExponent.word (2 * w)))),
+                ListDistinctExposition.output gs
+                    (ListDistinctExposition.inputBits
+                      (OAI.LinearAlgebra.MatrixExponent.tree w (OAI.LinearAlgebra.MatrixExponent.word (2 * w))) x) =
+                  decide (OAI.LinearAlgebra.MatrixExponent.flatten w x).Nodup) →
+              ↑(OAI.LinearAlgebra.MatrixExponent.listBits w) * (↑w ^ σ - 3) <
+                3 * (2 * ↑(OAI.LinearAlgebra.MatrixExponent.listBits w) + 4 * ↑gs.length + 1)
+'ListDistinctExposition.circuit_dnet' depends on axioms: [propext, Classical.choice, Quot.sound]
+'ListDistinctExposition.circuit_lower' depends on axioms: [propext, Classical.choice, Quot.sound]
+def ListDistinctExposition.run : List ListDistinctExposition.Gate → List Bool → List Bool :=
+fun x x_1 => List.brecOn (motive := fun x => List Bool → List Bool) x ListDistinctExposition.run._f x_1
+def ListDistinctExposition.WF : List ListDistinctExposition.Gate → ℕ → Prop :=
+fun x x_1 => List.brecOn (motive := fun x => ℕ → Prop) x ListDistinctExposition.WF._f x_1
+def ListDistinctExposition.output : List ListDistinctExposition.Gate → List Bool → Bool :=
+fun gs s => (ListDistinctExposition.run gs s).headD false
+inductive OAI.LinearAlgebra.MatrixExponent.Net : (F : Type) →
+  [Field F] →
+    (a b : OAI.LinearAlgebra.MatrixExponent.Wire) →
+      (OAI.LinearAlgebra.MatrixExponent.Val a → OAI.LinearAlgebra.MatrixExponent.Val b → F) → ℕ → Prop
+number of parameters: 2
+constructors:
+OAI.LinearAlgebra.MatrixExponent.Net.empty : ∀ {F : Type} [inst : Field F],
+  OAI.LinearAlgebra.MatrixExponent.Net F OAI.LinearAlgebra.MatrixExponent.Wire.unit
+    OAI.LinearAlgebra.MatrixExponent.Wire.unit (fun x x_1 => 1) 0
+OAI.LinearAlgebra.MatrixExponent.Net.table : ∀ {F : Type} [inst : Field F] (a b : OAI.LinearAlgebra.MatrixExponent.Wire)
+  (k : OAI.LinearAlgebra.MatrixExponent.Val a → OAI.LinearAlgebra.MatrixExponent.Val b → F),
+  OAI.LinearAlgebra.MatrixExponent.wd a + OAI.LinearAlgebra.MatrixExponent.wd b ≤ 3 →
+    OAI.LinearAlgebra.MatrixExponent.Net F a b k 1
+OAI.LinearAlgebra.MatrixExponent.Net.par : ∀ {F : Type} [inst : Field F]
+  {a b c d : OAI.LinearAlgebra.MatrixExponent.Wire}
+  {k : OAI.LinearAlgebra.MatrixExponent.Val a → OAI.LinearAlgebra.MatrixExponent.Val b → F}
+  {l : OAI.LinearAlgebra.MatrixExponent.Val c → OAI.LinearAlgebra.MatrixExponent.Val d → F} {m n : ℕ},
+  OAI.LinearAlgebra.MatrixExponent.Net F a b k m →
+    OAI.LinearAlgebra.MatrixExponent.Net F c d l n →
+      OAI.LinearAlgebra.MatrixExponent.Net F (a.pair c) (b.pair d) (fun x y => k x.1 y.1 * l x.2 y.2) (m + n)
+OAI.LinearAlgebra.MatrixExponent.Net.comp : ∀ {F : Type} [inst : Field F]
+  {a b c : OAI.LinearAlgebra.MatrixExponent.Wire}
+  {k : OAI.LinearAlgebra.MatrixExponent.Val a → OAI.LinearAlgebra.MatrixExponent.Val b → F}
+  {l : OAI.LinearAlgebra.MatrixExponent.Val b → OAI.LinearAlgebra.MatrixExponent.Val c → F} {m n : ℕ},
+  OAI.LinearAlgebra.MatrixExponent.Net F a b k m →
+    OAI.LinearAlgebra.MatrixExponent.Net F b c l n →
+      OAI.LinearAlgebra.MatrixExponent.Net F a c (fun x z => ∑ y, k x y * l y z) (m + n)
+OAI.LinearAlgebra.MatrixExponent.Net.trace : ∀ {F : Type} [inst : Field F]
+  {a b c : OAI.LinearAlgebra.MatrixExponent.Wire}
+  {k : OAI.LinearAlgebra.MatrixExponent.Val (a.pair c) → OAI.LinearAlgebra.MatrixExponent.Val (b.pair c) → F} {m : ℕ},
+  OAI.LinearAlgebra.MatrixExponent.Net F (a.pair c) (b.pair c) k m →
+    OAI.LinearAlgebra.MatrixExponent.Net F a b (fun x y => ∑ z, k (x, z) (y, z)) m
+OAI.LinearAlgebra.MatrixExponent.Net.pre : ∀ {F : Type} [inst : Field F] {a b c : OAI.LinearAlgebra.MatrixExponent.Wire}
+  {f : OAI.LinearAlgebra.MatrixExponent.Val a → OAI.LinearAlgebra.MatrixExponent.Val b}
+  {k : OAI.LinearAlgebra.MatrixExponent.Val b → OAI.LinearAlgebra.MatrixExponent.Val c → F} {m : ℕ},
+  OAI.LinearAlgebra.MatrixExponent.Net F b c k m →
+    OAI.LinearAlgebra.MatrixExponent.Rewire a b f → OAI.LinearAlgebra.MatrixExponent.Net F a c (fun x y => k (f x) y) m
+OAI.LinearAlgebra.MatrixExponent.Net.post : ∀ {F : Type} [inst : Field F]
+  {a b c : OAI.LinearAlgebra.MatrixExponent.Wire}
+  {f : OAI.LinearAlgebra.MatrixExponent.Val c → OAI.LinearAlgebra.MatrixExponent.Val b}
+  {k : OAI.LinearAlgebra.MatrixExponent.Val a → OAI.LinearAlgebra.MatrixExponent.Val b → F} {m : ℕ},
+  OAI.LinearAlgebra.MatrixExponent.Net F a b k m →
+    OAI.LinearAlgebra.MatrixExponent.Rewire c b f → OAI.LinearAlgebra.MatrixExponent.Net F a c (fun x y => k x (f y)) m
+def OAI.LinearAlgebra.MatrixExponent.Realizes : (F : Type) → [Field F] → ℕ → ℕ → ℕ → Prop :=
+fun F [Field F] w t m =>
+  ∃ v,
+    OAI.LinearAlgebra.MatrixExponent.Net F (OAI.LinearAlgebra.MatrixExponent.lists w t)
+        OAI.LinearAlgebra.MatrixExponent.Wire.unit (fun x x_1 => OAI.LinearAlgebra.MatrixExponent.distinctPower F w t x)
+        v ∧
+      m = v + t * OAI.LinearAlgebra.MatrixExponent.listBits w
+def OAI.LinearAlgebra.MatrixExponent.ManyList : (ℕ → ℕ → ℕ → Prop) → Prop :=
+fun P =>
+  ∃ σ,
+    0 < σ ∧
+      ∀ᶠ (w : ℕ) in Filter.atTop,
+        ∀ (t m : ℕ),
+          1 ≤ t →
+            t ≤ OAI.LinearAlgebra.MatrixExponent.listBits w →
+              P w t m → ↑t * ↑(OAI.LinearAlgebra.MatrixExponent.listBits w) * ↑w ^ σ < 3 * ↑m
+def OAI.LinearAlgebra.MatrixExponent.Tagged.Hard : (F : Type) → [Field F] → Prop :=
+fun F [Field F] =>
+  ∃ σ,
+    0 < σ ∧
+      ∀ᶠ (w : ℕ) in Filter.atTop,
+        ∀ (m : ℕ),
+          OAI.LinearAlgebra.MatrixExponent.Net F
+              (OAI.LinearAlgebra.MatrixExponent.Tagged.inputs w (OAI.LinearAlgebra.MatrixExponent.word w))
+              OAI.LinearAlgebra.MatrixExponent.Wire.unit
+              (OAI.LinearAlgebra.MatrixExponent.Tagged.tag F w (OAI.LinearAlgebra.MatrixExponent.word w)) m →
+            2 ^ w * ↑w * ↑w ^ σ ≤ ↑m
+# exit code: 0  seconds: 27.7023437
