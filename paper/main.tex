@@ -1,0 +1,471 @@
+\documentclass[11pt]{amsart}
+\usepackage[utf8]{inputenc}
+\usepackage[T1]{fontenc}
+\usepackage{lmodern}
+\usepackage{amsmath,amssymb,amsthm}
+\usepackage[margin=1.1in]{geometry}
+\usepackage{booktabs}
+\usepackage{tabularx}
+\usepackage{xcolor}
+\usepackage{listings}
+\usepackage[hidelinks]{hyperref}
+\usepackage{xurl}
+
+\lstdefinelanguage{lean}{
+  morekeywords={theorem,def,structure,where,fun,by,import,namespace,end,open,inductive,abbrev},
+  sensitive=true,
+  morecomment=[l]{--},
+  morestring=[b]"
+}
+\lstset{
+  language=lean,
+  basicstyle=\ttfamily\footnotesize,
+  keywordstyle=\bfseries,
+  columns=fullflexible,
+  keepspaces=true,
+  breaklines=true,
+  frame=single,
+  xleftmargin=0.5em,
+  xrightmargin=0.5em,
+  inputencoding=utf8,
+  extendedchars=true,
+  literate=
+    {∀}{{$\forall$}}1 {∃}{{$\exists$}}1 {σ}{{$\sigma$}}1 {η}{{$\eta$}}1
+    {ℝ}{{$\mathbb{R}$}}1 {ℕ}{{$\mathbb{N}$}}1 {→}{{$\to$}}1 {∧}{{$\wedge$}}1
+    {≤}{{$\le$}}1 {≥}{{$\ge$}}1 {ᶠ}{{$^{\mathsf f}$}}1 {⟨}{{$\langle$}}1
+    {⟩}{{$\rangle$}}1 {↑}{{$\uparrow$}}1 {×}{{$\times$}}1 {·}{{$\cdot$}}1
+}
+
+\newtheorem{theorem}{Theorem}[section]
+\newtheorem{lemma}[theorem]{Lemma}
+\newtheorem{corollary}[theorem]{Corollary}
+\newtheorem{proposition}[theorem]{Proposition}
+\theoremstyle{definition}
+\newtheorem{definition}[theorem]{Definition}
+\newtheorem{hypothesis}[theorem]{Hypothesis}
+\theoremstyle{remark}
+\newtheorem{remark}[theorem]{Remark}
+
+\newcommand{\F}{\mathbb{F}}
+\newcommand{\N}{\mathbb{N}}
+\newcommand{\R}{\mathbb{R}}
+\newcommand{\ED}{\mathrm{ED}}
+\newcommand{\lean}[1]{\texttt{#1}}
+\newcommand{\Net}{\mathrm{Net}}
+\newcommand{\DNet}{\mathrm{DNet}}
+\newcommand{\Val}{\mathrm{Val}}
+\newcommand{\wdt}{\mathrm{wd}}
+\renewcommand{\bysame}{OpenAI}
+\newcommand{\ind}[1]{[\,#1\,]}
+
+\title[A Lean checked Boolean corollary of the list distinctness theorem]{A Lean checked Boolean circuit corollary of OpenAI's list distinctness theorem}
+
+\author{Rickard Robin}
+\address{Kumobits AB, Stockholm, Sweden}
+
+\subjclass[2020]{Primary 68Q17; Secondary 68Q06, 68V20, 68V15}
+\keywords{Boolean circuit lower bounds, element distinctness, tensor networks, matrix multiplication exponent, Lean, formal verification}
+\date{November 26, 2026}
+
+\begin{document}
+\emergencystretch=3em
+\sloppy
+
+\begin{abstract}
+OpenAI's preprint \emph{The matrix multiplication exponent is nine fourths} (November 2026) derives its lower bound from a list distinctness theorem: over a finite field, every tensor network that tests whether the $2^w$ records of $2w$ bits in each of $t$ lists are pairwise distinct has volume larger than $t\,n\,w^{\sigma}$, where $n=2w\cdot 2^w$ and $\sigma>0$. The theorem is formalized in Lean as \texttt{BatchDescent.\allowbreak manyList}. Read backwards, the circuit to network simulation in the preprint's Proposition~2.3 turns this into a Boolean statement, which the preprint does not state. We state it and prove it in Lean: every fan-in two circuit over the full binary basis that decides element distinctness of $2^w$ strings of $2w$ bits has more than $(n w^{\sigma}-9n-3)/12$ gates, that is, size $\Omega(n(\log n)^{\sigma})$. The proof embeds straight line programs with $s$ gates into the network model with at most $2n+4s$ vertices. We also restate the upstream theorem with all wrappers unfolded and observe that sorting networks force $\sigma\le 1$. Our file builds against the openai/math project (Lean 4.34.1), passes leanchecker, and depends only on the axioms propext, Classical.choice and Quot.sound; the independent checker nanoda rechecked its full dependency closure of 45,579 declarations without errors. The result is conditional on OpenAI's proof of \texttt{BatchDescent.\allowbreak hard}: the closure draws on 191 upstream modules with about 94,000 lines, of which we have read about 1,000 as human mathematics. The constant $\sigma$ is not explicit, and nothing follows for Turing machine time or for P versus NP. To our knowledge, no superlinear lower bound for general Boolean circuits computing an explicit function was previously known; the best explicit bound we are aware of is $4n-O(\log n)$ (Mishra and Santhanam, ECCC TR26-260).
+\end{abstract}
+
+\maketitle
+
+\noindent\textbf{ACM CCS 2012:} Theory of computation $\to$ Circuit complexity; Theory of computation $\to$ Logic and verification.
+
+\section{Introduction}\label{sec:intro}
+
+\subsection{Context}
+On November 24, 2026, OpenAI released a preprint claiming that the exponent of square matrix multiplication equals $9/4$ over every field \cite{OAI94}, together with a Lean formalization in the repository openai/math \cite{OAImath}. The upper bound $\omega\le 9/4$ had appeared earlier \cite{OAIupper} and has since been given independent expositions, over every field by Amanov, van den Berg and Zuiddam \cite{AvdBZ} and with explicit algorithms by Shpilka \cite{Shpilka26}. The new part is the matching lower bound. In the paper's own words, a smaller exponent ``would compress tensor networks enough to violate a lower bound for testing whether the entries in each of several independent lists are distinct'' \cite[Abstract]{OAI94}. That lower bound is Theorem~2.2 of \cite{OAI94}, formalized as \texttt{OAI.\allowbreak LinearAlgebra.\allowbreak MatrixExponent.\allowbreak BatchDescent.\allowbreak manyList}.
+
+Theorem~2.2 of \cite{OAI94} concerns tensor networks with vertices of arity at most three over a finite field. Such networks can simulate Boolean circuits with linear overhead; the paper uses this fact itself, in its Proposition~2.3, to build a small network from a sorting circuit. Read in the other direction, the same simulation turns a lower bound for networks into a lower bound for circuits. As far as we can see, the paper does not state this consequence. This note states it, proves it, and checks the proof in Lean.
+
+\subsection{Circuit lower bounds}
+A counting argument shows that most Boolean functions need circuits of exponential size, but proving lower bounds for explicit functions is notoriously hard. For circuits of fan-in two over the full binary basis $B_2$, the best explicit lower bounds have long been linear: Find, Golovnev, Hirsch and Kulikov proved a bound above $3n$ \cite{FGHK16}, Li and Yang proved $3.1n-o(n)$ \cite{LiYang22}, and Mishra and Santhanam proved $3.5n-o(n)$ in the first version of their report and $4n-O(\log n)$ in its revision \cite{MishraSanthanam26}. For element distinctness itself, the lower bounds we are aware of are time space tradeoffs for branching programs and RAMs, due to Ajtai \cite{Ajtai02} and to Beame, Saks, Sun and Vee \cite{BSSV03}, and the classical $\Omega(N\log N)$ bound for algebraic computation trees of Ben-Or \cite{BenOr83}. None of these is a superlinear size bound for general Boolean circuits.
+
+\subsection{Contribution}
+Write $N=2^w$ and $n_w=2w\cdot 2^w$, and let $\ED_w\colon\{0,1\}^{n_w}\to\{0,1\}$ be the function that accepts a list of $N$ strings of $2w$ bits exactly when the strings are pairwise distinct. Our main statement is the following.
+
+\begin{theorem}[Conditional; Lean: \lean{circuit\_lower}]\label{thm:main}
+Assume Hypothesis~\ref{hyp:hard}, the soundness of OpenAI's formal proof of \lean{BatchDescent.hard}. Then there is $\sigma>0$ such that for all sufficiently large $w$, every Boolean circuit of fan-in two over $B_2$, with unbounded fan-out and $s$ gates, that computes $\ED_w$ satisfies
+\[
+ n_w\,(w^{\sigma}-3) \;<\; 3\,(2n_w+4s+1),
+ \qquad\text{hence}\qquad
+ s \;>\; \frac{n_w w^{\sigma}-9n_w-3}{12}.
+\]
+In particular $s\ge(1/12-o(1))\,n_w(\log_2 n_w)^{\sigma}$.
+\end{theorem}
+
+``Assume Hypothesis~\ref{hyp:hard}'' has a precise meaning here. The Lean theorem \lean{circuit\_lower} is proved outright, without hypotheses, inside the openai/math development, and its axiom report lists only the three standard axioms of Lean (Section~\ref{sec:lean}). The statement of \lean{circuit\_lower} involves only the definitions of Sections~\ref{sec:model} and \ref{sec:circuit}, which we have checked against their intended meaning. Definitions inside the deep levels of the upstream proof do not affect what the statement says. What a reader must trust is therefore that the formal proof is sound, which comes down to the soundness of the kernels that checked it and of the toolchain that produced the checked declarations. We replayed our module through the Lean kernel and rechecked the whole dependency closure with the independent kernel nanoda. A human audit of the deep levels would remove the reliance on these tools, and we have not done it (Sections~\ref{sec:structure} and \ref{sec:trust}). This is the sense in which the result is conditional.
+
+\subsection{Relation to Proposition~2.3 of \cite{OAI94}}\label{sec:prop23}
+The simulation we use already appears in the proof of Proposition~2.3 of \cite{OAI94}, in one sentence: to realize a sorting circuit as a tensor network, ``use the zero-one table of each gate, copy bits at fan-outs with equality tables, and pin the output to one''. There it serves the upper bound $m_0=O(n_w w^2)$ for one list, and the Lean project formalizes only the special case of one bitonic sorting network (the \lean{seed}, Section~\ref{sec:upper}). The preprint does not state the consequence for Boolean circuits; the word Boolean occurs in it only in that proof. An expert could derive Theorem~\ref{thm:main} from Theorem~2.2 and Proposition~2.3 of \cite{OAI94} in a paragraph, and we do not claim a new idea. Relative to the preprint and its Lean project, this note adds the following.
+\begin{enumerate}
+\item The Boolean statement, Theorem~\ref{thm:main}, with a human proof and explicit constants: a circuit with $s$ gates on $n$ inputs becomes a network with at most $2n+4s$ vertices, for every circuit and not only for one sorting network (Section~\ref{sec:circuit}).
+\item A Lean proof of that statement for arbitrary straight line programs over $B_2$ (\lean{circuit\_dnet}, \lean{circuit\_lower}), with only the three standard axioms, a kernel replay, and a second check of the whole dependency closure by an independent kernel (Section~\ref{sec:lean}).
+\item A standalone restatement of \lean{manyList} and of its stronger form \lean{manyList\_full} with the wrapper predicates \lean{ManyList}, \lean{Realizes} and \lean{listBits} unfolded, so that a reader only has to trust the network model \lean{Net} and the target tensor \lean{distinctPower} (Section~\ref{sec:manylist}).
+\item A check that the statements are not vacuous: the upstream seed gives $\sigma\le 2$ inside Lean, and sorting networks of Ajtai, Koml\'os and Szemer\'edi give $\sigma\le 1$ on paper (Section~\ref{sec:upper}).
+\item A trust base listing which upstream modules the result depends on and which of them we have read (Section~\ref{sec:trust}), and a list of places where the Lean route differs from the preprint's prose (Section~\ref{sec:diff}).
+\item A discussion of known barriers and sanity checks (Section~\ref{sec:barriers}).
+\end{enumerate}
+The value of the note lies in making one consequence explicit, checking it by machine, and stating precisely what remains to be audited (Section~\ref{sec:limits}).
+
+\section{The network model}\label{sec:model}
+
+All definitions in this section are those of the upstream file \lean{Network.lean} \cite{OAImath}; we paraphrase them faithfully.
+
+\begin{definition}[Bundles]
+A \emph{bundle} (\lean{Wire}) is a binary tree whose leaves are \lean{bit} or \lean{unit}. Its set of values $\Val(a)$ is defined by $\Val(\mathtt{bit})=\{0,1\}$, $\Val(\mathtt{unit})=\{\ast\}$ and $\Val(\mathtt{pair}\,a\,b)=\Val(a)\times\Val(b)$, and its width $\wdt(a)$ is its number of \lean{bit} leaves. The bundle $\mathtt{word}(k)$ is a right nested list of $k$ bits, and $\mathtt{tree}(w,a)$ is a complete binary tree of $2^w$ copies of $a$. The function \lean{flatten} lists the $2^w$ leaves of a tree from left to right. A \emph{rewiring} (\lean{Rewire}) is a bijection between values generated by identity, swap, the two associativity maps, insertion and removal of a \lean{unit}, composition and juxtaposition; it only permutes and rebrackets bits.
+\end{definition}
+
+\begin{definition}[Networks]\label{def:net}
+Let $F$ be a field. For bundles $a,b$, a tensor $k\colon\Val(a)\times\Val(b)\to F$ and $m\in\N$, the inductive predicate $\Net_F(a,b,k,m)$ says that $k$ is realized by a network with $m$ vertices. It is generated by:
+\begin{itemize}
+\item \lean{empty}: the constant $1$ on $\mathtt{unit}\to\mathtt{unit}$ with $0$ vertices;
+\item \lean{table}: any $k$ with $\wdt(a)+\wdt(b)\le 3$, with $1$ vertex;
+\item \lean{par}: from networks for $k$ and $l$ with $m$ and $n$ vertices, the product tensor $(x,y)\mapsto k(x_1,y_1)\,l(x_2,y_2)$ on paired bundles, with $m+n$ vertices;
+\item \lean{comp}: from $k$ on $a\to b$ and $l$ on $b\to c$, the tensor $(x,z)\mapsto\sum_{y\in\Val(b)}k(x,y)\,l(y,z)$, with $m+n$ vertices;
+\item \lean{trace}: from $k$ on $(a,c)\to(b,c)$, the tensor $(x,y)\mapsto\sum_{z\in\Val(c)}k((x,z),(y,z))$, with the same number of vertices;
+\item \lean{pre} and \lean{post}: precomposition or postcomposition with a rewiring, with the same number of vertices.
+\end{itemize}
+\end{definition}
+
+Internal wires are summed over, and \lean{trace} allows arbitrary cycles, so the model is a general trivalent tensor network over $F$. Vertices count; wires do not, but in a network of arity at most three the number of wires is at most $(3v+e)/2$ for $v$ vertices and $e$ exterior bits, so vertex count and the paper's volume agree up to a constant factor.
+
+\begin{definition}[Deterministic networks; \lean{FunctionNetwork.lean}]
+For $f\colon\Val(a)\to\Val(b)$, $\DNet_F(a,b,f,m)$ means that the graph tensor $(x,y)\mapsto\ind{f(x)=y}$ is realized by a network with at most $m$ vertices.
+\end{definition}
+
+\begin{definition}[Lists and the target tensor]
+Let $\mathtt{lists}(w,t)$ be the bundle of $t$ independent lists, each a $\mathtt{tree}(w,\mathtt{word}(2w))$, that is, $2^w$ records of $2w$ bits. The tensor $\mathtt{distinctPower}_F(w,t)$ is the product over the $t$ lists of the indicator that the records of that list are pairwise distinct (\lean{List.Nodup} of the flattened list). We write $n_w=\mathtt{listBits}(w)=2w\cdot 2^w$ for the number of bits of one list.
+\end{definition}
+
+\section{The list distinctness bound}\label{sec:manylist}
+
+\subsection{The unfolded statement}
+The following is the upstream theorem with wrappers unfolded. Its Lean proof is the single term \lean{BatchDescent.manyList F}.
+
+\begin{theorem}[Upstream; Lean: \lean{manyList\_unfolded}]\label{thm:manylist}
+For every finite field $F$ there is $\sigma>0$ such that for all sufficiently large $w$ and all $t,m\in\N$ with $1\le t\le n_w$: if there is $v$ with $\Net_F(\mathtt{lists}(w,t),\mathtt{unit},\mathtt{distinctPower}_F(w,t),v)$ and $m=v+t\,n_w$, then
+\[ t\,n_w\,w^{\sigma} \;<\; 3m. \]
+\end{theorem}
+
+\begin{lstlisting}
+theorem manyList_unfolded (F : Type) [Field F] [Finite F] :
+    ∃ σ : ℝ, 0 < σ ∧ ∀ᶠ w : ℕ in atTop, ∀ t m : ℕ,
+      1 ≤ t → t ≤ 2 * w * 2 ^ w →
+      (∃ v, Net F (lists w t) .unit (fun x _ => distinctPower F w t x) v ∧
+        m = v + t * (2 * w * 2 ^ w)) →
+      (t : ℝ) * ((2 * w * 2 ^ w : ℕ) : ℝ) * (w : ℝ) ^ σ < 3 * m :=
+  BatchDescent.manyList F
+\end{lstlisting}
+
+\begin{theorem}[Upstream; Lean: \lean{manyList\_full\_unfolded}]
+For every finite field $F$ there is $\eta>0$ such that for all sufficiently large $w$ and all $t,m$ with $1\le t\le 2^{w^{1+\eta}}$, under the same hypothesis on $m$, we have $t\,n_w\,w^{\eta}<m$.
+\end{theorem}
+
+Both are proved from a single hypothesis about tagged permutations, which is where all the depth lies. The tensor $\mathtt{tag}_F(w)$ takes $2^w$ input records and $2^w$ proposed output rows consisting of an index and a payload, and equals $1$ exactly when the rows are a permutation of the inputs, each labelled with its original position.
+
+\begin{hypothesis}[Upstream \lean{BatchDescent.hard}; Lean: \lean{tagged\_hard}]\label{hyp:hard}
+For every finite field $F$ there is $\sigma>0$ such that for all sufficiently large $w$, every network for $\mathtt{tag}_F(w)$ on the bundle $\mathtt{Tagged.inputs}(w,\mathtt{word}(w))$ with $m$ vertices satisfies $2^w\,w\,w^{\sigma}\le m$.
+\end{hypothesis}
+
+In Lean this is a theorem, not a hypothesis. We call it a hypothesis because its proof is the part of the development we have not audited as human mathematics.
+
+\subsection{Structure of the upstream proof}\label{sec:structure}
+The proof term in \lean{BatchDescent/Hard.lean} reads
+\begin{align*}
+\mathtt{manyList}\,F &= \mathtt{Tagged.manyList\_of\_tag}\,(\mathtt{hard}\,F),\\
+\mathtt{hard}\,F &= \mathtt{Processor.hard\_of\_descent}\,(\mathtt{descent}\,D),\\
+D &= \lambda\,\mathit{bad}.\ \mathtt{compilation\_of\_encoded}\,(\mathtt{encoded}\,\mathit{bad}).
+\end{align*}
+Following the Lean source, we distinguish four levels.
+\begin{enumerate}
+\item \emph{ManyList from Hard} (\lean{Tagged/Reduction.lean}, about 400 lines). A signed sum over flag vectors turns distinctness tests into tagged permutation tests, and a batch of tests is merged into one larger test using slices, sorting networks and column lifts. We read this level in full.
+\item \emph{Hard from Resists and Descent} (the argument \lean{hard\_of\_resists} in \lean{Diagonal/Broadcast.lean}). Assuming that Hard fails, a descent property shrinks networks for tensor powers by a factor $w^{-\alpha}$ per round, while a resistance property says that a certain quasi-linear tensor $U$ has no linear size network for $U^{\otimes d}$; after a fixed number of rounds the two collide. We read this argument in full.
+\item \emph{Descent from the failure of Hard} (directory \lean{BatchDescent}, 26 modules, 17,986 lines). Not read by us.
+\item \emph{Resists, unconditionally} (directory \lean{Processor}, 16 modules, 10,165 lines, together with the later part of \lean{Diagonal/Broadcast.lean}; it proceeds through a universal processor and diagonalization). Not read by us.
+\end{enumerate}
+The import closure of \lean{BatchDescent.Hard} has 309 OAI modules with 168,333 lines in total, computed from the \lean{import} lines of the commit cited in \cite{OAImath}. Not all of them contribute: the constants used by \lean{circuit\_lower} come from 191 of these modules, with 94,244 lines (Section~\ref{sec:trust}). The directories \lean{BatchDescent} and \lean{Processor}, which carry Levels 3 and 4, have 28,151 lines together, but these levels also draw on \lean{Assembly} (30,589 lines), \lean{Packing} (10,252 lines) and further directories, so the unread part is much larger than these two directories. We regard Level~4, an unconditional direct product type lower bound obtained by diagonalization, as the ingredient that most deserves expert scrutiny.
+
+\begin{corollary}[Lean: \lean{one\_list\_vertices}]\label{cor:onelist}
+For every finite field $F$ there is $\sigma>0$ such that for all sufficiently large $w$, every network for $\mathtt{distinctPower}_F(w,1)$ with $v$ vertices satisfies $n_w(w^{\sigma}-3)<3v$.
+\end{corollary}
+\begin{proof}
+Apply Theorem~\ref{thm:manylist} with $t=1$ and $m=v+n_w$, which is allowed since $1\le n_w$ for $w\ge 1$. This gives $n_w w^{\sigma}<3v+3n_w$.
+\end{proof}
+
+\section{The Boolean circuit corollary}\label{sec:circuit}
+
+\subsection{The circuit model}
+We formalize circuits as straight line programs (Lean: \lean{Gate}, \lean{run}, \lean{WF}, \lean{output}). A gate is a triple $(\mathit{op},i,j)$ with $\mathit{op}\colon\{0,1\}^2\to\{0,1\}$ arbitrary. A program is a list of gates. The state is a list of bits kept newest first, initially the input bits $x_1,\dots,x_n$; each gate appends $\mathit{op}(s_i,s_j)$, where $s_i$ is the entry at position $i$ of the current state. A program is well formed for $n$ inputs if every gate reads only existing positions. The output is the newest entry. Any value may be read any number of times, so fan-out is unbounded. This is the standard model of circuits of fan-in two over $B_2$, with size equal to the number of gates. The input bits of a value of a bundle are listed from left to right by \lean{inputBits}, and \lean{length\_inputBits} shows that there are exactly $\wdt(a)$ of them.
+
+\begin{lstlisting}
+structure Gate where
+  op : Bool → Bool → Bool
+  i : ℕ
+  j : ℕ
+
+def run : List Gate → List Bool → List Bool
+  | [], s => s
+  | g :: gs, s => run gs (g.op (s.getD g.i false) (s.getD g.j false) :: s)
+
+def WF : List Gate → ℕ → Prop
+  | [], _ => True
+  | g :: gs, k => g.i < k ∧ g.j < k ∧ WF gs (k + 1)
+
+def output (gs : List Gate) (s : List Bool) : Bool := (run gs s).headD false
+\end{lstlisting}
+
+\subsection{Statement}
+\begin{theorem}[Lean: \lean{circuit\_lower}]\label{thm:circuit}
+For every finite field $F$ there is $\sigma>0$ such that for all sufficiently large $w$ and every program $gs$ that is well formed for $n_w$ inputs and satisfies $\mathtt{output}(gs,\mathtt{inputBits}(x))=\ED_w(x)$ for every $x\in\Val(\mathtt{tree}(w,\mathtt{word}(2w)))$,
+\[ n_w\,(w^{\sigma}-3) \;<\; 3\,(2n_w+4\,|gs|+1). \]
+\end{theorem}
+
+\begin{lstlisting}
+theorem circuit_lower (F : Type) [Field F] [Finite F] :
+    ∃ σ : ℝ, 0 < σ ∧ ∀ᶠ w : ℕ in atTop, ∀ gs : List Gate,
+      WF gs (listBits w) →
+      (∀ x : Val (tree w (word (2 * w))),
+        output gs (inputBits _ x) = decide (flatten w x).Nodup) →
+      ((listBits w : ℕ) : ℝ) * ((w : ℝ) ^ σ - 3)
+        < 3 * (2 * (listBits w : ℝ) + 4 * gs.length + 1)
+\end{lstlisting}
+
+Theorem~\ref{thm:main} follows by taking $F=\F_2$: rearranging gives $12s>n_w w^{\sigma}-9n_w-3$. Since $\log_2 n_w=w+\log_2(2w)$, we have $w^{\sigma}/(\log_2 n_w)^{\sigma}\to 1$, so $s\ge(1/12-o(1))\,n_w(\log_2 n_w)^{\sigma}$.
+
+\subsection{Proof}
+We use four facts about deterministic networks from the upstream file \lean{FunctionNetwork.lean}: graph tensors compose, $\DNet(f)$ and $\DNet(g)$ with $m$ and $n$ vertices give $\DNet(g\circ f)$ with $m+n$ vertices (\lean{DNet.comp}) and $\DNet(f\times g)$ with $m+n$ vertices (\lean{DNet.par}); rewirings are free (\lean{DNet.pre}, \lean{DNet.post}); the identity on a bundle $a$ costs $\wdt(a)$ vertices (\lean{DNet.id}); discarding a bundle $a$ costs $\wdt(a)$ vertices (\lean{DNet.discard}). The composition rule holds because $\sum_y\ind{f(x)=y}\ind{g(y)=z}=\ind{g(f(x))=z}$, in which at most one summand is nonzero, so it holds over every field.
+
+\begin{lemma}[Free pass-through; Lean: \lean{applyFst}]\label{lem:applyfst}
+If $\DNet(X,(b,r),f,m)$ and $\DNet(b,c,h,n)$, then $\DNet(X,(c,r),x\mapsto(h(f(x)_1),f(x)_2),m+n)$.
+\end{lemma}
+\begin{proof}
+Juxtapose the two networks. The result realizes, on input $(x,z)$ and output $((y_b,y_r),y_c)$, the tensor $\ind{f(x)=(y_b,y_r)}\cdot\ind{h(z)=y_c}$ with $m+n$ vertices. Rewire the output to $((y_c,y_r),y_b)$ and apply \lean{trace} to identify the output $y_b$ with the input $z$. The traced tensor is
+\[ \sum_{z}\ind{f(x)=(z,y_r)}\,\ind{h(z)=y_c} \;=\; \ind{(h(f(x)_1),f(x)_2)=(y_c,y_r)}, \]
+since only $z=f(x)_1$ contributes. Trace and rewiring add no vertices.
+\end{proof}
+
+The point of Lemma~\ref{lem:applyfst} is that the bundle $r$ passes through without identity vertices. Without it, each gate would pay for every value still alive, and the overhead would be quadratic.
+
+\begin{lemma}[One gate; Lean: \lean{copyAt}, \lean{gateStep}]\label{lem:gate}
+Let $f\colon\Val(X)\to\Val(\mathtt{word}(k+1))$ with $\DNet(f)$ of $m$ vertices, and let $g=(\mathit{op},i,j)$ with $i,j\le k$. Then the map $x\mapsto(\mathit{op}(f(x)_i,f(x)_j),f(x))$ has a deterministic network with $m+3$ vertices.
+\end{lemma}
+\begin{proof}
+Rewire bit $i$ to the front, apply the copy table $b\mapsto(b,b)$ (one vertex of arity $3$) to it by Lemma~\ref{lem:applyfst}, and rewire the original back into place; this costs one vertex. Do the same for the bit that is now at position $j+1$. The two copies are now at the front. Apply the gate table $(p,q)\mapsto\mathit{op}(q,p)$ (one vertex of arity $3$) to them by Lemma~\ref{lem:applyfst}. The total is three vertices.
+\end{proof}
+
+\begin{lemma}[Simulation; Lean: \lean{simulate}]\label{lem:sim}
+Let $f\colon\Val(X)\to\Val(\mathtt{word}(k+1))$ with $\DNet(f)$ of $m$ vertices, and let $gs$ be well formed for $k+1$ values. Then there is $g\colon\Val(X)\to\Val(\mathtt{word}(k+1+|gs|))$ with $\DNet(g)$ of $m+3|gs|$ vertices whose list of bits equals $\mathtt{run}(gs,\text{list of bits of }f(x))$ for every $x$.
+\end{lemma}
+\begin{proof}
+Induction on $gs$, using Lemma~\ref{lem:gate} at each step. The new value is placed at the front, which matches the newest first convention of \lean{run}.
+\end{proof}
+
+\begin{lemma}[Circuits embed; Lean: \lean{circuit\_dnet}]\label{lem:embed}
+If $\wdt(X)=n\ge 1$ and $gs$ is well formed for $n$ inputs, then $x\mapsto\mathtt{output}(gs,\mathtt{inputBits}(x))$ has a deterministic network with at most $2n+4|gs|$ vertices.
+\end{lemma}
+\begin{proof}
+Write $s=|gs|$. Start from the identity on $X$ followed by the free rewiring \lean{toW} that lists its bits as a word; this costs $n$ vertices. Lemma~\ref{lem:sim} gives a network with $n+3s$ vertices whose output word has length $n+s$ and lists $\mathtt{run}(gs,\mathtt{inputBits}(x))$. Keep the newest bit and discard the other $n+s-1$ bits by Lemma~\ref{lem:applyfst} with \lean{DNet.discard}, at a cost of $n+s-1$ vertices. The total is $2n+4s-1\le 2n+4s$.
+\end{proof}
+
+\begin{lemma}[Pinning; Lean: \lean{pin}]\label{lem:pin}
+If $\DNet(a,\mathtt{bit},f,m)$, then the tensor $x\mapsto\ind{f(x)=1}$ on $a\to\mathtt{unit}$ has a network with at most $m+1$ vertices.
+\end{lemma}
+\begin{proof}
+Compose with the one vertex table $y\mapsto\ind{y=1}$ on $\mathtt{bit}\to\mathtt{unit}$; then $\sum_y\ind{f(x)=y}\ind{y=1}=\ind{f(x)=1}$.
+\end{proof}
+
+\begin{corollary}[Lean: \lean{deterministic\_lower}]\label{cor:det}
+For every finite field $F$ there is $\sigma>0$ such that for all sufficiently large $w$, if $\ED_w$ has a deterministic network with $m$ vertices then $n_w(w^{\sigma}-3)<3(m+1)$.
+\end{corollary}
+\begin{proof}
+By Lemma~\ref{lem:pin} there is a network with $v\le m+1$ vertices for $x\mapsto\ind{\ED_w(x)=1}$. Precomposing with the free rewiring that appends a \lean{unit} turns it into a network for $\mathtt{distinctPower}_F(w,1)$, because $\mathtt{lists}(w,1)=\mathtt{pair}(\mathtt{tree}(w,\mathtt{word}(2w)),\mathtt{unit})$. Corollary~\ref{cor:onelist} gives $n_w(w^{\sigma}-3)<3v\le 3(m+1)$.
+\end{proof}
+
+\begin{proof}[Proof of Theorem~\ref{thm:circuit}]
+Take $\sigma$ from Corollary~\ref{cor:det} and $w\ge 1$ large. The bundle $X=\mathtt{tree}(w,\mathtt{word}(2w))$ has $\wdt(X)=n_w\ge 1$ (Lean: \lean{wd\_tree\_list}). By Lemma~\ref{lem:embed}, the function computed by $gs$ has a deterministic network with at most $2n_w+4|gs|$ vertices, and by hypothesis this function is $\ED_w$. Corollary~\ref{cor:det} with $m=2n_w+4|gs|$ gives the claim.
+\end{proof}
+
+\begin{remark}
+The same argument applies to any model that compiles into $\Net_F$ with linear overhead, for example circuits that sum exactly over nondeterministic guess bits in $F$, since such sums are realized by \lean{trace}. We have not formalized this extension.
+\end{remark}
+
+\section{A matching upper bound}\label{sec:upper}
+
+\begin{proposition}[Upstream \lean{seed}; Lean: \lean{upper}]\label{prop:upper}
+For every field $F$ there is $C$ such that for all sufficiently large $w$ there is $m\le C\,n_w w^2$ with $\mathtt{Realizes}_F(w,1,m)$, that is, a network for $\mathtt{distinctPower}_F(w,1)$ with $v$ vertices and $v+n_w=m$.
+\end{proposition}
+
+The upstream proof takes $C=2000$ and uses a bitonic sorting network of compare exchange units on $2w$ bit records followed by a comparison of adjacent records, pinned to the value one (\lean{Distinctness.lean}). Two consequences follow.
+\begin{enumerate}
+\item \emph{The bounds are not vacuous.} For one list the network complexity of distinctness lies between $n_w w^{\sigma}/3-n_w$ and $2000\,n_w w^2$.
+\item \emph{$\sigma\le 2$.} If $\sigma$ is as in Theorem~\ref{thm:manylist}, then $n_w w^{\sigma}<3m\le 6000\,n_w w^2$ for all large $w$, which is impossible for $\sigma>2$.
+\end{enumerate}
+For Boolean circuits, Batcher's sorting networks \cite{Batcher68} use $O(N\log^2 N)$ comparators on $N$ records; each comparator on $2w$ bit records and each of the $N-1$ adjacent comparisons takes $O(w)$ gates. This gives circuits for $\ED_w$ of size $O(n_w w^2)=O(n_w(\log n_w)^2)$. Ajtai, Koml\'os and Szemer\'edi constructed sorting networks with $O(N\log N)$ comparators \cite{AKS83}; used in the same way, they give circuits for $\ED_w$ of size $O(N\log N\cdot w)=O(n_w w)$.
+
+\begin{proposition}[Not formalized]\label{prop:sigma1}
+Any $\sigma$ satisfying Theorem~\ref{thm:circuit} or Theorem~\ref{thm:manylist} satisfies $\sigma\le 1$.
+\end{proposition}
+\begin{proof}
+Let $s_w=O(n_w w)$ be the size of the circuits just described. Theorem~\ref{thm:circuit} gives $n_w w^{\sigma}<9n_w+12s_w+3=O(n_w w)$ for all large $w$, which is impossible for $\sigma>1$. For Theorem~\ref{thm:manylist}, Lemmas~\ref{lem:embed} and \ref{lem:pin} turn the same circuits into networks for $\mathtt{distinctPower}_F(w,1)$ with $O(n_w w)$ vertices, and the argument of Corollary~\ref{cor:onelist} applies.
+\end{proof}
+
+The AKS networks are not available in Mathlib, so Proposition~\ref{prop:sigma1} is not part of our Lean file. Under Hypothesis~\ref{hyp:hard}, the circuit size of $\ED_w$ is therefore between $\Omega(n_w(\log n_w)^{\sigma})$ and $O(n_w\log n_w)$, with $0<\sigma\le 1$. The proof of Proposition~2.3 of \cite{OAI94} only needs some $\sigma>0$, so this does not affect the upstream argument.
+
+\section{Lean formalization}\label{sec:lean}
+
+\subsection{File and environment}
+The file \lean{ListDistinct.lean} (422 lines, namespace \lean{ListDistinctExposition}) imports only two upstream modules:
+\begin{lstlisting}
+import OAI.LinearAlgebra.MatrixExponent.BatchDescent.Hard
+import OAI.LinearAlgebra.MatrixExponent.Distinctness
+\end{lstlisting} Its Sections 1 to 5 restate upstream results; Section 6 (lines 136 to 397) is new and contains the circuit model and the embedding. The file contains no \lean{sorry} and declares no axioms. Its SHA256 digest is
+\begin{center}\small\ttfamily 12b017a49872e161e1bc8ee3d413411893c20f40716d2ef4cd64cba28caeaa29.\end{center}
+The copy in the public repository \cite{Companion} has the same digest. The upstream project is openai/math at commit \lean{3344da5} \cite{OAImath}, with toolchain \lean{leanprover/lean4:v4.34.1} and Mathlib \cite{Mathlib20} at revision \lean{d13f23b7}. Lean~4 is described in \cite{Lean4}.
+
+\subsection{Build}
+The file was checked inside the built upstream project on an x86\_64 Windows workstation with Lean 4.34.1 (release build of commit \lean{5045d005}) and Lake 5.0.0, using \lean{LEAN\_NUM\_THREADS=8} and the command
+\begin{lstlisting}
+lake env lean ListDistinct.lean
+\end{lstlisting} The run started at 23:55:14 Central European Time on November 25, 2026, ended with exit code 0, and took 27.7 seconds.
+
+\subsection{Axioms}
+The file ends with thirteen \lean{\#print axioms} commands. Each of the following declarations is reported to depend on exactly \lean{[propext, Classical.choice, Quot.sound]}:
+\lean{manyList\_unfolded}, \lean{manyList\_full\_unfolded}, \lean{one\_list\_vertices}, \lean{gate}, \lean{copy}, \lean{pin}, \lean{deterministic\_lower}, \lean{upper}, \lean{tagged\_hard}, \lean{circuit\_dnet} and \lean{circuit\_lower} from our file, and the upstream \lean{BatchDescent.manyList} and \lean{BatchDescent.hard}. Since \lean{\#print axioms} traverses the whole dependency closure, this shows in particular that the upstream proof of \lean{BatchDescent.hard} uses no \lean{sorry} and no axioms beyond the standard three. A representative line of the log is
+\begin{lstlisting}
+'ListDistinctExposition.circuit_lower' depends on axioms: [propext, Classical.choice, Quot.sound]
+\end{lstlisting}
+
+\subsection{Kernel replay}\label{sec:replay}
+We compiled the file to an \lean{.olean} and replayed it with the commands
+\begin{lstlisting}
+lake env lean -R . -o .lake/build/lib/lean/ListDistinct.olean ListDistinct.lean
+lake env leanchecker ListDistinct
+\end{lstlisting}
+The second command runs \lean{leanchecker}, the kernel replay tool that ships with Lean toolchains from v4.28.0 \cite{lean4checker}. It replays every declaration of the module \lean{ListDistinct} through the kernel; imported modules are trusted and not replayed. The run started at 00:04:16 Central European Time on November 26, 2026, ended with exit code 0, and took 61.4 seconds.
+
+\subsection{Second kernel}\label{sec:nanoda}
+To check the whole dependency closure with a separate implementation, we exported it with \lean{lean4export} \cite{lean4export} (tag v4.34.0, commit \lean{076e8e5}, rebuilt for Lean 4.34.1) and ran nanoda \cite{nanoda}, an independent type checker for Lean~4 written in Rust (\lean{nanoda\_lib} 0.4.32, commit \lean{0da9f98}). The export was produced by
+\begin{lstlisting}[language={}]
+lake env lean4export ListDistinct -- ListDistinctExposition.circuit_lower ListDistinctExposition.manyList_unfolded ListDistinctExposition.manyList_full_unfolded ListDistinctExposition.upper ListDistinctExposition.tagged_hard
+\end{lstlisting}
+and contains these five theorems together with every declaration they depend on, from the core library and Mathlib through the whole upstream proof of \lean{BatchDescent.hard}; it has 462,908,674 bytes. We configured nanoda to admit only the axioms \lean{propext}, \lean{Classical.choice} and \lean{Quot.sound}, with its Nat and String kernel extensions enabled and four worker threads. The run started at 20:18:20 Central European Time on November 26, 2026, ended with exit code 0 after 19.9 seconds, and reported
+\begin{lstlisting}
+Checked 45579 declarations with no errors
+\end{lstlisting}
+Its pretty printer reproduced the statement of \lean{circuit\_lower}. As a negative control, the same run with \lean{Classical.choice} removed from the admitted axioms fails with an error stating that \lean{Classical.arbitrary} depends on \lean{Classical.choice}. This check is independent of the Lean kernel, but not of the Lean elaborator or of the exporter, which produced the declarations it checks. Like any kernel check, it shows that the proofs are well typed, not that the definitions mean what we say.
+
+\subsection{Trust base}\label{sec:trust}
+We computed the transitive closure of the constants used by \lean{circuit\_lower} with a short Lean metaprogram based on \lean{getUsedConstantsAsSet}, included in the companion repository. The closure has 44,847 constants: 7,183 from the Lean core library, 24,932 from Mathlib, 180 from Batteries, 1 from Aesop, 12,467 from openai/math and 84 from our file. By kind there are 31,189 theorems, 11,462 definitions, 910 inductive types with 1,050 constructors and 208 recursors, 21 opaque constants, 4 quotient primitives and 3 axioms, namely \lean{propext}, \lean{Classical.choice} and \lean{Quot.sound}. The upstream \lean{BatchDescent.hard} alone accounts for 44,648 of these constants. The embedding \lean{circuit\_dnet}, by contrast, needs only 3,991 constants, of which 53 come from openai/math. The constants come from 1,360 modules, among them 191 modules of openai/math with 94,244 lines; Table~\ref{tab:trust} groups these by directory. Line counts are those of whole files that contribute at least one constant.
+
+\begin{table}[h]
+\small
+\begin{tabular}{@{}lrrr@{}}
+\toprule
+Directory & Modules & Constants & Lines\\
+\midrule
+\lean{Assembly} & 41 & 3,775 & 30,589\\
+\lean{BatchDescent} & 26 & 2,931 & 17,986\\
+\lean{Packing} & 14 & 1,291 & 10,252\\
+\lean{Processor} & 16 & 1,607 & 10,165\\
+\lean{Diagonal} & 9 & 730 & 4,531\\
+\lean{Spectral} & 9 & 410 & 3,682\\
+\lean{Transcript} & 6 & 210 & 2,543\\
+\lean{Diagram} & 8 & 282 & 2,270\\
+\lean{Tagged} & 7 & 298 & 1,829\\
+\lean{Install} & 4 & 59 & 1,683\\
+\lean{Coloring} & 5 & 141 & 1,647\\
+\lean{TensorSpectrum.Multiplicative} & 9 & 68 & 1,105\\
+\lean{TensorSpectrum.AdditiveCone} & 7 & 112 & 1,077\\
+Other (12 directories, 10 single modules) & 30 & 553 & 4,885\\
+\midrule
+Total & 191 & 12,467 & 94,244\\
+\bottomrule
+\end{tabular}
+\caption{Upstream modules in the dependency closure of \lean{circuit\_lower}. Directories are relative to \lean{OAI.LinearAlgebra.MatrixExponent}, except those starting with \lean{TensorSpectrum}, which are relative to \lean{OAI.LinearAlgebra}.}\label{tab:trust}
+\end{table}
+
+Of these 94,244 upstream lines we have read about 1,000 as human mathematics: the modules \lean{Network} (96 lines), \lean{FunctionNetwork} (119), \lean{ListBounds} (34), \lean{Distinctness} (57), \lean{Tagged.Reduction} (407), \lean{Tagged.Hard} and \lean{BatchDescent.Hard} (45 together), and the argument \lean{hard\_of\_resists} in \lean{Diagonal.Broadcast}. The remaining roughly 93,000 lines have been checked by two kernels but not audited by us. Mathlib and the core library are part of the trust base in the usual way.
+
+\subsection{Reproduction}
+Check out openai/math, build its Lean project, copy \lean{ListDistinct.lean} into the project root, and run the two commands of Section~\ref{sec:replay}. For the second kernel, build \lean{lean4export} and \lean{nanoda\_lib} at the commits above, run the export command of Section~\ref{sec:nanoda}, and pass the configuration file from the companion repository to \lean{nanoda\_bin}. The build log, the checker log and the file are in the companion repository \cite{Companion}.
+
+\section{Differences between the Lean development and the paper text}\label{sec:diff}
+
+\begin{table}[h]
+\small
+\begin{tabularx}{\textwidth}{@{}lXXX@{}}
+\toprule
+ & Paper \cite{OAI94} & Lean \cite{OAImath} & Assessment\\
+\midrule
+1 & Volume counts vertices and all wires; bound $\mathrm{vol}>t\,n_w w^{\sigma}$. & $m$ counts vertices plus exterior bits; bound $t\,n_w w^{\sigma}<3m$. & Equivalent up to constants by trivalency.\\
+2 & $1\le t\le 2^w$. & $t\le n_w$ in \lean{manyList}; $t\le 2^{w^{1+\eta}}$ in \lean{manyList\_full}. & Lean is stronger.\\
+3 & $\sigma$ depends only on the finite field $k$. & $\exists\,\sigma$ for each finite field. & Matches.\\
+4 & Lists of $2^w$ words of $2w$ bits; wiring may connect lists. & $t$ copies of $\mathtt{tree}(w,\mathtt{word}(2w))$ in one network. & Matches.\\
+5 & Section 4 splits into fields without ports (spectral argument) and finite fields with ports (a signed counting tensor and a companion theorem). & \lean{hard} uses one route for every finite field: Descent plus Resists, with no case split at the top. & The prose does not describe the formal proof; a human check must follow the Lean route.\\
+6 & Tagged reduction through two distinctness tests. & Same idea, plus slices, sort lifts and a merge into one instance. & Lean is more detailed; consistent.\\
+7 & Boolean circuits appear only in the upper bound (Proposition 2.3). & No Boolean statement upstream. & Filled by \lean{circuit\_lower}.\\
+8 & $\omega$ enters through the compression theorem. & \lean{manyList} does not use compression. & The list bound stands alone.\\
+\bottomrule
+\end{tabularx}
+\caption{Comparison of Theorem 2.2 of \cite{OAI94} and its proof with the Lean development.}
+\end{table}
+
+Item 5 matters most for reviewers: anyone who wants to check the list bound by hand must read the Lean route, since the paper's Section 4 describes a different argument. Item 8 means that Theorem~\ref{thm:main} does not depend on any statement about matrix multiplication. In the upstream development, $\omega$ enters only where the list bound, the seed and the compression theorem are combined into a contradiction.
+
+\section{Barriers and sanity checks}\label{sec:barriers}
+A superlinear lower bound for an explicit function against general Boolean circuits would be a notable advance, so it should be tested against what is known. None of the checks below is evidence that the upstream proof is correct; they only show that we know of no reason why the conditional statement must be false.
+
+\emph{Sorting networks.} Element distinctness reduces to sorting, and Proposition~\ref{prop:sigma1} shows that the bound can be consistent with the AKS networks \cite{AKS83} only if $\sigma\le 1$. In terms of the number of records $N$, the bound reads $s\gtrsim (N\log N)\,w^{\sigma}/6$, while the AKS circuits have size $O(N\log N\cdot w)$. Circuits for $\ED_w$ of size $O(n_w)$ would contradict Theorem~\ref{thm:circuit} and would therefore show that the upstream proof is wrong. We are not aware of circuits of size $o(n_w\log n_w)$ for $\ED_w$.
+
+\emph{Comparison and algebraic models.} Ben-Or proved an $\Omega(N\log N)$ lower bound for element distinctness in algebraic computation trees \cite{BenOr83}, and $\Omega(N\log N)$ comparisons are needed in the comparison model. These bounds do not yield Boolean circuit lower bounds. In those models the inputs are atomic numbers that can only be compared or combined arithmetically, while a Boolean circuit reads individual bits and may, for example, route records by their bits as in radix sorting. Moreover, measured in the input length $n_w=2wN$, a count of $N\log N=n_w/2$ operations is only linear. Theorem~\ref{thm:circuit} is a statement about bits and is not implied by these classical bounds.
+
+\emph{Natural proofs.} Razborov and Rudich showed that, if suitable pseudorandom functions exist, no natural property can prove superpolynomial lower bounds against general circuits \cite{RR97}. The barrier as stated concerns superpolynomial bounds, so it does not directly rule out a bound of the form $n(\log n)^{\sigma}$. We have not analyzed whether the upstream argument, which works with one explicit tensor through descent and diagonalization, would satisfy the constructivity and largeness conditions if it were turned into a property of functions.
+
+\emph{Relativization and algebrization.} The relativization barrier of Baker, Gill and Solovay \cite{BGS75} and the algebrization barrier of Aaronson and Wigderson \cite{AW09} say that proof techniques which relativize, or algebrize, cannot settle certain questions about complexity classes, such as P versus NP or circuit lower bounds for classes like NEXP. Theorem~\ref{thm:circuit} would imply a separation of a modest kind, namely that P is not contained in the class of languages with circuits of linear size. We have not determined whether oracles are known relative to which this inclusion holds, and the upstream argument works with concrete finite tensors and never refers to oracle machines, so it is not clear what relativizing it would mean. We therefore draw no conclusion from these barriers in either direction.
+
+\emph{Hardness magnification and locality.} Oliveira and Santhanam showed that for certain problems even slightly superlinear lower bounds would imply superpolynomial ones \cite{OS18}, and Chen, Hirahara, Oliveira, Pich, Rajgopal and Santhanam showed that many known lower bound techniques fail for such problems because they also apply to circuits with local oracle gates \cite{CHOPRS22}. These results concern problems such as variants of the minimum circuit size problem. We do not know of a magnification theorem for element distinctness. If one were found, Theorem~\ref{thm:main} would have much stronger consequences, which would be a strong reason for additional scrutiny of the upstream proof.
+
+\emph{Uniform models.} A multitape Turing machine running in time $T$ can be simulated by circuits of size $O(T\log T)$ \cite{PF79}. Since $\sigma\le 1$, the bound gives no lower bound for Turing machine or RAM time beyond the trivial linear one, and nothing about P versus NP.
+
+\section{Limitations}\label{sec:limits}
+\begin{enumerate}
+\item \emph{Conditional result.} Everything rests on the upstream proof of \lean{BatchDescent.hard}. Two kernels accept it, but we have read only about 1,000 of the 94,244 upstream lines in its dependency closure as human mathematics, and none of Levels 3 and 4, and the OpenAI preprints have not, to our knowledge, been peer reviewed. A bug in a definition would not be caught by the kernel; we checked that the definitions used in our statements mean what we claim, but not all definitions inside the deep levels.
+\item \emph{No explicit constant.} The upstream proof of Hypothesis~\ref{hyp:hard} proceeds by contradiction, so no numerical value of $\sigma$ or of the threshold on $w$ can be read off. We only know $0<\sigma\le 2$ from Lean and $\sigma\le 1$ from Proposition~\ref{prop:sigma1}.
+\item \emph{Input lengths.} The bound is stated for input lengths $n_w=2w\cdot 2^w$. Extending it to all $n$ by padding is routine but not formalized.
+\item \emph{Model.} The bound is for exact computation on every input by circuits of fan-in two over $B_2$. It says nothing about formulas, depth, randomized or approximate computation.
+\item \emph{No uniform consequences.} Time $T$ on a multitape Turing machine gives circuits of size $O(T\log T)$ \cite{PF79}, so a lower bound of $\Omega(n(\log n)^{\sigma})$ with $\sigma\le 1$ gives no new time lower bounds for Turing machines or RAMs, and nothing about P versus NP.
+\item \emph{Comparison models.} The bound is not a sorting lower bound in comparison or algebraic decision tree models, where $\Omega(N\log N)$ is classical \cite{BenOr83}; see Section~\ref{sec:barriers} for why those bounds say nothing about Boolean circuits.
+\item \emph{Kernel checks are not audits.} Two kernels, the standard one through \lean{leanchecker} and nanoda, accept the development. Both trust the Lean elaborator's output and the exporter, and neither can detect a definition that does not mean what its name suggests.
+\end{enumerate}
+
+\section{Related work}\label{sec:related}
+\emph{Explicit circuit lower bounds.} For general circuits over $B_2$, the best explicit bounds are linear, obtained by gate elimination: a bound above $3n$ by Find, Golovnev, Hirsch and Kulikov \cite{FGHK16}, $3.1n-o(n)$ by Li and Yang \cite{LiYang22}, and $4n-O(\log n)$ by Mishra and Santhanam \cite{MishraSanthanam26}. Valiant studied graph theoretic routes to superlinear lower bounds, in particular for circuits of logarithmic depth \cite{Valiant77}. Afshani, Freksen, Kamma and Larsen proved an $\Omega(n\log n)$ lower bound for integer multiplication by circuits of bounded fan-in and fan-out, conditional on a conjecture about network coding \cite{AFKL19}. Theorem~\ref{thm:main} is likewise conditional, but on the correctness of a specific machine checked proof rather than on an open conjecture.
+
+\emph{Element distinctness.} Ajtai proved that element distinctness cannot be decided in linear time by RAMs with $\epsilon n$ bits of working memory \cite{Ajtai02}, and Beame, Saks, Sun and Vee extended time space tradeoffs to randomized branching programs \cite{BSSV03}. These results restrict memory; Theorem~\ref{thm:main} restricts only size.
+
+\emph{Matrix multiplication.} The upper bound $9/4$ is due to OpenAI \cite{OAIupper}, with expositions over every field \cite{AvdBZ} and with explicit algorithms \cite{Shpilka26}. The lower bound and the list distinctness theorem are from \cite{OAI94}. A companion OpenAI preprint claims superpolynomial lower bounds for arithmetic circuits computing the Hamiltonian cycle polynomial and the permanent \cite{OAIham}; those bounds concern arithmetic circuits, not Boolean ones, and we have not examined them.
+
+\emph{Formalization.} The development uses Lean~4 \cite{Lean4} and Mathlib \cite{Mathlib20}.
+
+\section{Conclusion}
+If OpenAI's formal proof of the list distinctness bound is sound, then element distinctness, an explicit function in P, requires Boolean circuits of size $\Omega(n(\log n)^{\sigma})$ for some $\sigma>0$, and this implication is checked in Lean down to the three standard axioms and rechecked by an independent kernel. Sorting networks show that $\sigma\le 1$. The decisive open task is a human audit of the descent and resistance levels of the upstream proof, which together with the modules they use make up about 93,000 lines that we have not read; after that, extracting an explicit $\sigma$ by making the contradiction argument constructive would sharpen the result. We invite experts to scrutinize both the upstream proof and our reading of it.
+
+\section*{Data and code availability}
+The companion repository \url{https://github.com/rille111/matmul-9-4-listdistinct} \cite{Companion} contains the Lean file \lean{ListDistinct.lean}, the build log \lean{build.log}, the checker log \lean{leanchecker.log} and a longer exposition \lean{exposition.md} at its top level, the trust base metaprogram and its output in \lean{trustbase/}, the nanoda configuration, log and summary in \lean{second-kernel/}, and the source and PDF of this paper in \lean{paper/}. Code and logs are under the Apache License 2.0; the paper is under CC BY 4.0. The upstream preprint and Lean project are at \url{https://github.com/openai/math} \cite{OAImath}.
+
+\section*{Acknowledgements}
+All credit for the list distinctness theorem, its formal proof and the surrounding mathematics belongs to the authors of \cite{OAI94}. This work was carried out with substantial help from AI assistants, which were used to read the Lean source, write and debug the Lean file, run the builds, search the literature and draft this text. The author takes full responsibility for the content of this paper.
+
+\bibliographystyle{amsplain}
+\bibliography{refs}
+
+\end{document}

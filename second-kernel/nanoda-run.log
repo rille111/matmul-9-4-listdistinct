@@ -1,0 +1,13 @@
+# lean4export run (TITAN, Europe/Stockholm, UTC+1)
+start 2026-11-26 20:14:59
+export exit=0 secs=43.6582137 size=462908674
+E5390FA99306D47FF6C0849B267BA33D5851FE70D2A7967238EF7074069A7D04
+
+# nanoda run, config second-kernel/nanoda-config.json
+start 2026-11-26 20:18:20 +01:00
+exit=0 secs=19.9223805 peakWS_MB=0
+## stdout
+Checked 45579 declarations with no errors
+## stderr (empty)
+
+# The pretty printed statement of circuit_lower is in second-kernel/nanoda-pp.txt
